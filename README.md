@@ -7,15 +7,15 @@ Xây dựng hệ thống dự đoán MVP (cầu thủ xuất sắc nhất) cho t
 
 ### 1. Tiền xử lý dữ liệu
 - Crawl, làm sạch và chuẩn hóa dữ liệu (đã xong).
-- Feature engineering: tạo thêm các đặc trưng giúp mô hình học tốt hơn (VD: phong độ, vị trí, thống kê cá nhân/trận,...).
+- Feature engineering: tạo thêm các đặc trưng giúp mô hình học tốt hơn (VD: phong độ, vị trí, thống kê cá nhân/trận,...). KHÔI
 
-### 2. Xây dựng & đánh giá AI Model
+### 2. Xây dựng & đánh giá AI Model: NHI
 - Chia tập train/val/test.
 - Lựa chọn mô hình học máy phù hợp (Logistic, Random Forest, XGBoost, Neural Network,...).
 - Đánh giá và chọn ra mô hình tốt nhất.
 - Lưu lại mô hình (pickle/joblib).
 
-### 3. API hóa mô hình
+### 3. API hóa mô hình: KHÔI
 - Dùng Flask hoặc FastAPI tạo API endpoint `/predict`, nhận thông tin trận đấu, trả về dự đoán (cầu thủ xuất sắc nhất).
 - Ví dụ request:
     ```json
@@ -28,7 +28,7 @@ Xây dựng hệ thống dự đoán MVP (cầu thủ xuất sắc nhất) cho t
     ```
 - Response: trả về tên cầu thủ xuất sắc nhất trận đấu.
 
-### 4. Xây dựng giao diện web (UI)
+### 4. Xây dựng giao diện web (UI): BÁCH
 - Giao diện đơn giản với các thành phần:
     - Form nhập đội hình thi đấu, thông số trận.
     - Nút [Dự đoán].
@@ -37,7 +37,7 @@ Xây dựng hệ thống dự đoán MVP (cầu thủ xuất sắc nhất) cho t
     - **Streamlit/Dash:** kết hợp trực tiếp với Python/API.
     - **Tách backend (Python API) & frontend (ReactJS/VueJS/HTML).**
 
-### 5. Kết nối AI Model với UI
+### 5. Kết nối AI Model với UI: DƯƠNG VS DUKKU
 - UI gửi yêu cầu dự đoán (HTTP POST/GET) tới endpoint của API.
 - Nhận kết quả và hiển thị đẹp mắt cho người dùng.
 - Xử lý hợp lệ, thông báo lỗi khi cần.
