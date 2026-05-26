@@ -42,12 +42,6 @@ Xây dựng hệ thống dự đoán MVP (cầu thủ xuất sắc nhất) cho t
 - Nhận kết quả và hiển thị đẹp mắt cho người dùng.
 - Xử lý hợp lệ, thông báo lỗi khi cần.
 
-### 6. Triển khai hệ thống
-- Deploy toàn bộ hệ thống (API + UI) lên cloud (Heroku, Render, Vercel, ...).
-- Hướng dẫn sử dụng, demo, link trải nghiệm (nếu có).
-
----
-
 ## Chức năng Web App
 
 - Nhập thông tin trận đấu (đội, cầu thủ, thống kê, tỉ số).
