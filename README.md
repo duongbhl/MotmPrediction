@@ -1,80 +1,83 @@
 # Dự án: Dự đoán cầu thủ xuất sắc nhất trận đấu Premier League
 
 ## Mục tiêu
-Xây dựng hệ thống dự đoán MVP (cầu thủ xuất sắc nhất) cho từng trận đấu Premier League, cung cấp web app nhập thông tin trận đấu và trả về dự đoán cầu thủ.
 
-## Quy trình & các bước phát triển
+Xây dựng pipeline dữ liệu và mô hình dự đoán MOTM (Man of the Match) cho từng
+trận đấu Premier League. Ở giai đoạn hiện tại, project tập trung vào bước
+chuẩn hóa dữ liệu đầu vào và tạo dataset sẵn sàng cho modeling.
 
-### 1. Tiền xử lý dữ liệu
-- Crawl, làm sạch và chuẩn hóa dữ liệu (đã xong).
-- Feature engineering: tạo thêm các đặc trưng giúp mô hình học tốt hơn (VD: phong độ, vị trí, thống kê cá nhân/trận,...). KHÔI
+## Trạng thái hiện tại
 
-### 2. Xây dựng & đánh giá AI Model: NHI
-- Chia tập train/val/test.
-- Lựa chọn mô hình học máy phù hợp (Logistic, Random Forest, XGBoost, Neural Network,...).
-- Đánh giá và chọn ra mô hình tốt nhất.
-- Lưu lại mô hình (pickle/joblib).
+- Dữ liệu nguồn chính: `PlayerCrawl.xlsx`.
+- Pipeline transform chính: `src/transform_motm_data.py`.
+- Output sinh ra sau transform:
+  - `data/processed/motm_model_ready.csv`
+  - `data/processed/train.csv`
+  - `data/processed/validation.csv`
+  - `data/processed/test.csv`
+  - `data/processed/data_quality_report.md`
+  - `artifacts/preprocessor.joblib`
+  - `artifacts/feature_columns.json`
 
-### 3. API hóa mô hình: KHÔI
-- Dùng Flask hoặc FastAPI tạo API endpoint `/predict`, nhận thông tin trận đấu, trả về dự đoán (cầu thủ xuất sắc nhất).
-- Ví dụ request:
-    ```json
-    {
-      "home_team": "...",
-      "away_team": "...",
-      "player_stats": [...],
-      ... (các trường cần thiết khác)
-    }
-    ```
-- Response: trả về tên cầu thủ xuất sắc nhất trận đấu.
+Lưu ý: không dùng `motm_clean.xlsx` hoặc
+`PlayerCrawl_normalized_standard.xlsx` làm input cho pipeline transform vì các
+file này có thể chứa lỗi numeric/normalization từ các bước thử nghiệm trước.
 
-### 4. Xây dựng giao diện web (UI): BÁCH
-- Giao diện đơn giản với các thành phần:
-    - Form nhập đội hình thi đấu, thông số trận.
-    - Nút [Dự đoán].
-    - Kết quả dự đoán: tên cầu thủ MVP, thông tin nổi bật, hình ảnh (nếu có).
-- Có thể dùng:  
-    - **Streamlit/Dash:** kết hợp trực tiếp với Python/API.
-    - **Tách backend (Python API) & frontend (ReactJS/VueJS/HTML).**
+## Cài đặt và chạy local
 
-### 5. Kết nối AI Model với UI: DƯƠNG VS DUKKU
-- UI gửi yêu cầu dự đoán (HTTP POST/GET) tới endpoint của API.
-- Nhận kết quả và hiển thị đẹp mắt cho người dùng.
-- Xử lý hợp lệ, thông báo lỗi khi cần.
+Clone project:
 
-## Chức năng Web App
+```bash
+git clone https://github.com/duongbhl/MotmPrediction.git
+cd MotmPrediction
+```
 
-- Nhập thông tin trận đấu (đội, cầu thủ, thống kê, tỉ số).
-- Gửi, nhận và hiển thị kết quả dự đoán MVP.
-- Giao diện đơn giản, dễ dùng.
-- Sẵn sàng mở rộng cho nhiều giải đấu khác nếu muốn.
+Cài đặt thư viện:
 
-## Hướng dẫn cài đặt & chạy thử
+```bash
+pip install -r requirements.txt
+```
 
-1. Clone repo:
-    ```
-    git clone https://github.com/duongbhl/MotmPrediction.git
-    cd MotmPrediction
-    ```
+Chạy pipeline transform:
 
-2. Cài đặt môi trường:
-    ```
-    pip install -r requirements.txt
-    ```
+```bash
+python src/transform_motm_data.py --input PlayerCrawl.xlsx --out-dir data/processed --artifacts-dir artifacts
+```
 
-3. Train model/dùng model mẫu.
+Chạy unit test:
 
-4. Chạy API server dự đoán:
-    ```
-    python api_server.py
-    ```
+```bash
+python -m unittest discover -s tests
+```
 
-5. (Tùy chọn) Chạy UI (Streamlit hoặc web front-end riêng).
+## Chạy transform dữ liệu trên Google Colab
 
-6. Truy cập app, nhập thông tin trận đấu và trải nghiệm dự đoán cầu thủ xuất sắc nhất trận!
+Project có thể chạy trực tiếp trên Google Colab sau khi đã được push lên GitHub.
+Cách nhanh nhất là clone repo trong Colab:
 
----
+```bash
+!git clone https://github.com/duongbhl/MotmPrediction.git
+%cd MotmPrediction
+!pip install -r requirements.txt
+!python src/transform_motm_data.py --input PlayerCrawl.xlsx --out-dir data/processed --artifacts-dir artifacts
+```
+
+Hướng dẫn đầy đủ, bao gồm cách upload zip, dùng Google Drive và clone từ
+GitHub, nằm trong `docs/colab_run_guide.md`.
+
+Trước khi chạy bằng cách clone từ GitHub, hãy đảm bảo các file mới như
+`requirements.txt`, `src/`, `docs/`, `tests/` và `PlayerCrawl.xlsx` đã được
+commit/push lên repo.
+
+## Quy trình phát triển tiếp theo
+
+1. Chuẩn hóa và transform dữ liệu.
+2. Chọn mô hình phù hợp và đánh giá trên train/validation/test.
+3. Lưu model tốt nhất bằng `joblib` hoặc `pickle`.
+4. Xây API dự đoán bằng Flask hoặc FastAPI.
+5. Xây UI để nhập thông tin trận đấu và hiển thị cầu thủ MOTM dự đoán.
 
 ## Contributing & License
+
 - Mọi đóng góp, phản hồi xin gửi Issue hoặc Pull Request.
-- License: MIT (hoặc khác tùy dự án).
+- License: MIT hoặc điều chỉnh theo quyết định của nhóm.
