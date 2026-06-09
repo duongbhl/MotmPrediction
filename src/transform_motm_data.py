@@ -362,20 +362,32 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 def split_by_match_time(
     df: pd.DataFrame, report: QualityReport
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    match_dates = (
-        df.groupby("match_id", as_index=False)["match_date"]
-        .min()
+    """Stratified temporal split: within each season keep chronological order,
+    then take 70/15/15 from each season separately so every season appears in
+    all three splits.  This avoids distribution shift when train and test cover
+    completely different seasons.
+    """
+    match_meta = (
+        df.groupby("match_id", as_index=False)
+        .agg(match_date=("match_date", "min"), season=("season", "first"))
         .sort_values(["match_date", "match_id"])
         .reset_index(drop=True)
     )
-    match_count = len(match_dates)
-    train_end = max(1, int(match_count * 0.70))
-    validation_end = max(train_end + 1, int(match_count * 0.85))
-    validation_end = min(validation_end, match_count)
 
-    train_ids = set(match_dates.iloc[:train_end]["match_id"])
-    validation_ids = set(match_dates.iloc[train_end:validation_end]["match_id"])
-    test_ids = set(match_dates.iloc[validation_end:]["match_id"])
+    train_ids: set = set()
+    validation_ids: set = set()
+    test_ids: set = set()
+
+    for season, group in match_meta.groupby("season", sort=True):
+        group = group.reset_index(drop=True)
+        n = len(group)
+        train_end = max(1, int(n * 0.70))
+        val_end = max(train_end + 1, int(n * 0.85))
+        val_end = min(val_end, n)
+
+        train_ids.update(group.iloc[:train_end]["match_id"])
+        validation_ids.update(group.iloc[train_end:val_end]["match_id"])
+        test_ids.update(group.iloc[val_end:]["match_id"])
 
     train = df[df["match_id"].isin(train_ids)].copy()
     validation = df[df["match_id"].isin(validation_ids)].copy()
