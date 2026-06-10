@@ -1,0 +1,36 @@
+/* Layout only — all component styles use Tailwind utility classes */
+.app-root { position: relative; z-index: 1; min-height: 100vh; }
+.main { padding: 36px 0 80px; }
+
+
+/* Shared card */
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r); transition: border-color .2s var(--ease); }
+.card:hover { border-color: var(--border-s); }
+.card-head { display: flex; align-items: center; gap: 10px; padding: 18px 22px 0; margin-bottom: 18px; }
+.card-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.ci-green  { background: var(--green-dim); }
+.ci-blue   { background: var(--blue-dim); }
+.ci-gold   { background: var(--gold-dim); }
+.ci-red    { background: var(--red-dim); }
+.card-label { font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; color: var(--text2); }
+
+/* Section title */
+.sec-title { font-size: 10px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+
+/* Pos tag */
+.pos-tag { font-size: 9px; font-weight: 800; padding: 3px 7px; border-radius: 5px; letter-spacing: 0.6px; flex-shrink: 0; }
+.pt-GK  { background: var(--gold-dim);  color: var(--gold);  }
+.pt-DEF { background: var(--blue-dim);  color: var(--blue);  }
+.pt-MID { background: var(--green-dim); color: var(--green); }
+.pt-FWD { background: var(--red-dim);   color: var(--red);   }
+
+/* Buttons */
+.btn-pri { background: linear-gradient(135deg, var(--green), #00C45A); border: none; border-radius: var(--rsm); color: #04100A; font-family: inherit; font-size: 13px; font-weight: 800; cursor: pointer; padding: 11px 18px; transition: transform .15s, box-shadow .15s; }
+.btn-pri:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--green-glow); }
+.btn-sec { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: var(--rsm); color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 11px 18px; transition: background .15s; }
+.btn-sec:hover { background: rgba(255,255,255,0.09); }
+
+@media (max-width: 900px) {
+  .lineup-row { grid-template-columns: 1fr; }
+  .wrap { padding: 0 14px; }
+}
