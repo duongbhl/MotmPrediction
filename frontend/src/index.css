@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+/* ── Tailwind v4 theme tokens ── */
+@theme {
+  --color-bg:     #06090F;
+  --color-card:   #0D1420;
+  --color-card2:  #111B2B;
+  --color-green:  #00E87A;
+  --color-gold:   #F5B800;
+  --color-blue:   #3B82F6;
+  --color-red:    #FF4560;
+  --color-purple: #8B5CF6;
+  --color-muted:  #4E5E72;
+  --color-dim:    #A8B8CC;
+  --color-text:   #EDF2FF;
+  --font-sans:    'Inter', system-ui, sans-serif;
+  --ease-ui:      cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ── Base styles ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+
+body {
+  background: #06090F;
+  color: #EDF2FF;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient glow */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 60% 40% at 15% 10%,  rgba(0,232,122,0.04) 0%, transparent 100%),
+    radial-gradient(ellipse 50% 50% at 85% 80%,  rgba(59,130,246,0.05) 0%, transparent 100%),
+    radial-gradient(ellipse 40% 60% at 50% 50%,  rgba(245,184,0,0.02) 0%, transparent 100%);
+}
+
+#root { isolation: isolate; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { opacity: 0.4; }
+
+/* ── Keyframes ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes livePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,232,122,0.28); }
+  50%       { box-shadow: 0 0 0 5px transparent; }
+}
+@keyframes spinA { to { transform: rotate(360deg); } }
+@keyframes trophyBounce {
+  0%   { transform: scale(0) rotate(-15deg); opacity: 0; }
+  65%  { transform: scale(1.18) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes nameSlide {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes valPop {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(80px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(80px); pointer-events: none; }
+}
+
