@@ -3,3 +3,5 @@ numpy
 openpyxl
 scikit-learn
 joblib
+fastapi
+uvicorn

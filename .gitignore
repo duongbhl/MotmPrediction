@@ -1,4 +1,26 @@
 artifacts/
 data/processed/
+# Python
 __pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+venv/
+.env
+
+# Data files (rất quan trọng)
+*.xlsx
+*.csv
+
+# Jupyter Notebook checkpoint
 .ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# VSCode
+.vscode/

@@ -24,6 +24,37 @@ export default function App() {
     setToast({ type, msg, id: Date.now() })
   }, [])
 
+  const buildPlayer = useCallback((player, side, team) => {
+    const stats = player.default_stats || {}
+    const passesCompleted = Number(stats.passes_completed ?? 30)
+    const passesTotal = Number(stats.passes_total ?? Math.max(passesCompleted, 40))
+
+    return {
+      name: player.name,
+      team,
+      position: player.position || 'MC',
+      is_home: side === 'home' ? 1 : 0,
+      is_first_eleven: 1,
+      age: stats.age ?? null,
+      minutes_played: Number(stats.minutes_played ?? 90),
+      rating: stats.rating ?? null,
+      goals: Number(stats.goals ?? 0),
+      assists: Number(stats.assists ?? 0),
+      shots_total: Number(stats.shots_total ?? 0),
+      shots_on_target: Number(stats.shots_on_target ?? 0),
+      key_passes: Number(stats.key_passes ?? 0),
+      passes_completed: passesCompleted,
+      passes_total: passesTotal,
+      pass_accuracy: stats.pass_accuracy ?? null,
+      tackles: Number(stats.tackles ?? 0),
+      interceptions: Number(stats.interceptions ?? 0),
+      clearances: Number(stats.clearances ?? 0),
+      aerial_won: Number(stats.aerial_won ?? 0),
+      dribbles_won: Number(stats.dribbles_won ?? 0),
+      fouls_committed: Number(stats.fouls_committed ?? 0),
+    }
+  }, [])
+
   const handleTeamChange = useCallback(async (side, team) => {
     if (side === 'home') { setHomeTeam(team); setHomePlayers([]) }
     else                 { setAwayTeam(team); setAwayPlayers([]) }
@@ -31,21 +62,13 @@ export default function App() {
     try {
       const res  = await fetch(`/api/players/${encodeURIComponent(team)}`)
       const data = await res.json()
-      const mapped = data.players.slice(0, 18).map(p => ({
-        name: p.name, team, position: p.position || 'MC',
-        is_home: side === 'home' ? 1 : 0, is_first_eleven: 1,
-        minutes_played: 90, rating: 7.0, goals: 0, assists: 0,
-        shots_total: 0, shots_on_target: 0, key_passes: 0,
-        passes_completed: 30, passes_total: 40,
-        tackles: 0, interceptions: 0, clearances: 0,
-        dribbles_won: 0, fouls_committed: 0,
-      }))
+      const mapped = data.players.slice(0, 18).map(p => buildPlayer(p, side, team))
       if (side === 'home') setHomePlayers(mapped)
       else                 setAwayPlayers(mapped)
     } catch {
       showToast('err', '❌ Failed to load squad')
     }
-  }, [showToast])
+  }, [buildPlayer, showToast])
 
   const handlePredict = useCallback(async () => {
     if (!homeTeam || !awayTeam) { showToast('err', '⚠️ Select both teams'); return }
@@ -63,7 +86,6 @@ export default function App() {
       })
       if (!res.ok) throw new Error(res.statusText)
       const data = await res.json()
-      if (data.error) { showToast('err', '⚠️ ' + data.error); return }
       setResults(data)
       showToast('ok', `🏆 ${data.motm.name} — Man of the Match!`)
       setTimeout(() => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300)
@@ -120,4 +142,3 @@ export default function App() {
     </div>
   )
 }
-
