@@ -75,7 +75,7 @@ function PlayerCard({ player, index, side, onUpdate, onRemove }) {
                 <label className="text-[9px] font-bold uppercase tracking-[1.4px] text-muted">{lbl}</label>
                 <input
                   type="number" step={step}
-                  value={player[key]}
+                  value={player[key] ?? ''}
                   className={`${inputBase} ${isRating ? 'text-gold' : ''}`}
                   onChange={e => set(key, e.target.value)}
                 />
@@ -150,5 +150,4 @@ export default function LineupPanel({ side, team, players, setPlayers, onAddManu
     </div>
   )
 }
-
 

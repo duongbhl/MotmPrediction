@@ -1,209 +1,419 @@
 """
-MOTM Predictor — FastAPI Backend (API only)
-Run:  uvicorn main:app --reload --port 8000
+MOTM Predictor FastAPI backend.
+
+Run from backend:
+    uvicorn main:app --reload --port 8000
 """
 
-import os
+from __future__ import annotations
+
+import json
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+import joblib
 import numpy as np
 import pandas as pd
-from typing import List
-
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-# ─────────────────────────────────────────────
-# App
-# ─────────────────────────────────────────────
-app = FastAPI(title="MOTM Predictor API", version="1.0.0")
+
+ROOT = Path(__file__).resolve().parents[1]
+ARTIFACTS_DIR = ROOT / "artifacts"
+PROCESSED_DATA = ROOT / "data" / "processed" / "motm_model_ready.csv"
+
+MODEL_PATH = ARTIFACTS_DIR / "best_model.joblib"
+PREPROCESSOR_PATH = ARTIFACTS_DIR / "preprocessor.joblib"
+FEATURES_PATH = ARTIFACTS_DIR / "feature_columns.json"
+META_PATH = ARTIFACTS_DIR / "best_model_meta.json"
+
+ROLLING_SOURCE_COLUMNS = {
+    "rolling_rating_5": "rating",
+    "rolling_goals_5": "goals",
+    "rolling_assists_5": "assists",
+    "rolling_shots_5": "shots_total",
+    "rolling_key_passes_5": "key_passes",
+    "rolling_tackles_5": "tackles",
+}
+
+POSITION_GROUP = {
+    "GK": "GK",
+    "DC": "DEF",
+    "DR": "DEF",
+    "DL": "DEF",
+    "DLC": "DEF",
+    "DRC": "DEF",
+    "WBL": "DEF",
+    "WBR": "DEF",
+    "DMC": "MID",
+    "DMR": "MID",
+    "DML": "MID",
+    "MC": "MID",
+    "MR": "MID",
+    "ML": "MID",
+    "MLC": "MID",
+    "MRC": "MID",
+    "AMC": "ATT",
+    "AMR": "ATT",
+    "AML": "ATT",
+    "FW": "ATT",
+    "FWR": "ATT",
+    "FWL": "ATT",
+    "ST": "ATT",
+    "Sub": "Sub",
+}
+
+
+app = FastAPI(title="MOTM Predictor API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ─────────────────────────────────────────────
-# Load data
-# ─────────────────────────────────────────────
-DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "motm_clean.xlsx")
-df = pd.read_excel(DATA_PATH)
-df["rating"]          = pd.to_numeric(df["rating"],          errors="coerce")
-df["is_man_of_match"] = pd.to_numeric(df["is_man_of_match"], errors="coerce")
 
-ml_model = None
-try:
-    import joblib
-    ml_model = joblib.load(os.path.join(os.path.dirname(__file__), "motm_model.pkl"))
-    print("✅  ML model loaded")
-except Exception:
-    print("ℹ️  No trained model — using scoring-based predictor")
-
-# ─────────────────────────────────────────────
-# Schemas
-# ─────────────────────────────────────────────
 class PlayerStats(BaseModel):
     name: str
     team: str
     position: str = "MC"
     is_home: int = 0
     is_first_eleven: int = 1
+    age: float | None = None
     minutes_played: float = 90.0
-    rating: float = 7.0
-    goals: int = 0
-    assists: int = 0
-    shots_total: int = 0
-    shots_on_target: int = 0
-    key_passes: int = 0
-    passes_completed: int = 30
-    passes_total: int = 40
-    tackles: int = 0
-    interceptions: int = 0
-    clearances: int = 0
-    dribbles_won: int = 0
-    fouls_committed: int = 0
+    rating: float | None = None
+    goals: float = 0
+    assists: float = 0
+    shots_total: float = 0
+    shots_on_target: float = 0
+    key_passes: float = 0
+    passes_completed: float = 30
+    passes_total: float = 40
+    pass_accuracy: float | None = None
+    tackles: float = 0
+    interceptions: float = 0
+    clearances: float = 0
+    aerial_won: float = 0
+    dribbles_won: float = 0
+    fouls_committed: float = 0
 
 
 class MatchData(BaseModel):
     home_team: str
     away_team: str
-    home_score: int = 0
-    away_score: int = 0
-    players: List[PlayerStats]
+    home_score: int = Field(default=0, ge=0)
+    away_score: int = Field(default=0, ge=0)
+    season: str | None = None
+    players: list[PlayerStats]
 
 
-# ─────────────────────────────────────────────
-# Scoring
-# ─────────────────────────────────────────────
-GK_SET  = {"GK"}
-DEF_SET = {"DC", "DL", "DR", "DLC", "DRC", "WBL", "WBR"}
-MID_SET = {"DMC", "MC", "ML", "MR", "MLC", "MRC", "AMC", "AML", "AMR"}
+def _json_number(value: Any) -> float | int | None:
+    if value is None or pd.isna(value):
+        return None
+    number = float(value)
+    if number.is_integer():
+        return int(number)
+    return round(number, 4)
 
 
-def _pos_group(pos: str) -> str:
-    p = pos.upper().strip()
-    if p in GK_SET:  return "GK"
-    if p in DEF_SET: return "DEF"
-    if p in MID_SET: return "MID"
-    return "FWD"
+def _clean_position(position: str | None) -> str:
+    return (position or "MC").strip() or "MC"
 
 
-def _score_player(p: PlayerStats, score_margin: int) -> float:
-    pos    = _pos_group(p.position)
-    is_gk  = pos == "GK"
-    is_def = pos == "DEF"
-    is_mid = pos == "MID"
-
-    score = (p.rating / 10.0) * 35.0
-    score += min(p.goals,  4) * 6.25
-    score += min(p.assists, 3) * 5.0
-    score += min(p.shots_on_target, 6) * 0.83
-    score += min(p.key_passes, 8) * 1.0
-
-    if is_gk:
-        score += min(p.clearances, 6) * 1.2
-        score += min(p.tackles,    4) * 0.6
-    elif is_def:
-        score += min(p.tackles,       6)  * 0.9
-        score += min(p.interceptions, 5)  * 0.8
-        score += min(p.clearances,   10)  * 0.4
-    elif is_mid:
-        score += min(p.tackles,       5) * 0.6
-        score += min(p.interceptions, 4) * 0.5
-    else:
-        score += min(p.dribbles_won, 5) * 0.5
-
-    min_factor = min(p.minutes_played, 90) / 90.0
-    score *= min_factor
-    score -= p.fouls_committed * 0.25
-
-    if not p.is_first_eleven:
-        score *= 0.82
-
-    if abs(score_margin) >= 2:
-        winning_side = (p.is_home and score_margin > 0) or (not p.is_home and score_margin < 0)
-        if winning_side:
-            score *= 1.04
-
-    player_rows = df[df["name"].str.lower() == p.name.lower()]
-    if len(player_rows) >= 3:
-        avg_rating = player_rows["rating"].mean(skipna=True)
-        motm_rate  = player_rows["is_man_of_match"].mean(skipna=True)
-        if not np.isnan(avg_rating):
-            score += (avg_rating / 10.0) * 2.5
-        if not np.isnan(motm_rate):
-            score += motm_rate * 5.0
-
-    return float(np.clip(score, 0, 100))
+def _position_group(position: str | None) -> str:
+    return POSITION_GROUP.get(_clean_position(position), "Other")
 
 
-# ─────────────────────────────────────────────
-# Endpoints
-# ─────────────────────────────────────────────
+@lru_cache(maxsize=1)
+def history_df() -> pd.DataFrame:
+    if not PROCESSED_DATA.exists():
+        raise RuntimeError(f"Processed data not found: {PROCESSED_DATA}")
+
+    df = pd.read_csv(PROCESSED_DATA, low_memory=False)
+    df["match_date"] = pd.to_datetime(df["match_date"], errors="coerce")
+    df["name_key"] = df["name"].astype(str).str.lower().str.strip()
+    df["team_key"] = df["team"].astype(str).str.lower().str.strip()
+    return df.sort_values(["match_date", "match_id"])
+
+
+@lru_cache(maxsize=1)
+def model_bundle() -> dict[str, Any]:
+    missing = [
+        str(path.relative_to(ROOT))
+        for path in (MODEL_PATH, PREPROCESSOR_PATH, FEATURES_PATH)
+        if not path.exists()
+    ]
+    if missing:
+        raise RuntimeError(
+            "Missing model artifacts: "
+            + ", ".join(missing)
+            + ". Run `venv/bin/python src/train_models.py` first."
+        )
+
+    with FEATURES_PATH.open(encoding="utf-8") as f:
+        feature_meta = json.load(f)
+
+    meta = {}
+    if META_PATH.exists():
+        with META_PATH.open(encoding="utf-8") as f:
+            meta = json.load(f)
+
+    return {
+        "model": joblib.load(MODEL_PATH),
+        "preprocessor": joblib.load(PREPROCESSOR_PATH),
+        "feature_columns": feature_meta["feature_columns"],
+        "meta": meta,
+    }
+
+
+def _latest_season() -> str:
+    values = history_df()["season"].dropna().astype(str)
+    if values.empty:
+        return "2025/2026"
+    return sorted(values.unique())[-1]
+
+
+def _player_history(player: PlayerStats) -> pd.DataFrame:
+    df = history_df()
+    name_key = player.name.lower().strip()
+    team_key = player.team.lower().strip()
+    rows = df[(df["name_key"] == name_key) & (df["team_key"] == team_key)]
+    if rows.empty:
+        rows = df[df["name_key"] == name_key]
+    return rows
+
+
+def _recent_defaults(rows: pd.DataFrame) -> dict[str, Any]:
+    if rows.empty:
+        return {}
+
+    recent = rows.sort_values(["match_date", "match_id"]).tail(5)
+    defaults: dict[str, Any] = {}
+    for col in [
+        "age",
+        "minutes_played",
+        "rating",
+        "goals",
+        "assists",
+        "shots_total",
+        "shots_on_target",
+        "key_passes",
+        "passes_completed",
+        "passes_total",
+        "pass_accuracy",
+        "tackles",
+        "interceptions",
+        "clearances",
+        "aerial_won",
+        "dribbles_won",
+        "fouls_committed",
+    ]:
+        if col in recent:
+            defaults[col] = _json_number(recent[col].mean(skipna=True))
+    return defaults
+
+
+def _feature_row(match: MatchData, player: PlayerStats) -> dict[str, Any]:
+    rows = _player_history(player)
+    recent = rows.sort_values(["match_date", "match_id"]).tail(5)
+
+    passes_total = float(player.passes_total or 0)
+    pass_accuracy = player.pass_accuracy
+    if pass_accuracy is None:
+        pass_accuracy = (
+            (float(player.passes_completed) / passes_total) * 100
+            if passes_total > 0
+            else 0
+        )
+
+    is_home = int(player.is_home)
+    score_margin = (
+        match.home_score - match.away_score
+        if is_home == 1
+        else match.away_score - match.home_score
+    )
+
+    row: dict[str, Any] = {
+        "season": match.season or _latest_season(),
+        "home_team": match.home_team,
+        "away_team": match.away_team,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+        "team": player.team,
+        "is_home": is_home,
+        "position": _clean_position(player.position),
+        "is_first_eleven": int(player.is_first_eleven),
+        "age": player.age,
+        "minutes_played": player.minutes_played,
+        "goals": player.goals,
+        "assists": player.assists,
+        "shots_total": player.shots_total,
+        "shots_on_target": player.shots_on_target,
+        "key_passes": player.key_passes,
+        "passes_completed": player.passes_completed,
+        "passes_total": passes_total,
+        "pass_accuracy": pass_accuracy,
+        "tackles": player.tackles,
+        "interceptions": player.interceptions,
+        "clearances": player.clearances,
+        "aerial_won": player.aerial_won,
+        "dribbles_won": player.dribbles_won,
+        "fouls_committed": player.fouls_committed,
+        "position_group": _position_group(player.position),
+        "score_margin": score_margin,
+        "goal_involvement": player.goals + player.assists,
+        "shot_accuracy": (
+            player.shots_on_target / player.shots_total
+            if player.shots_total > 0
+            else 0.0
+        ),
+        "minutes_ratio": min(max(player.minutes_played / 90.0, 0), 1.3),
+    }
+
+    for output_col, source_col in ROLLING_SOURCE_COLUMNS.items():
+        row[output_col] = (
+            float(recent[source_col].mean(skipna=True))
+            if not recent.empty and source_col in recent
+            else np.nan
+        )
+
+    return row
+
+
+def _result_payload(player: PlayerStats, probability: float) -> dict[str, Any]:
+    return {
+        "name": player.name,
+        "team": player.team,
+        "position": _clean_position(player.position),
+        "probability": round(probability, 6),
+        "score": round(probability * 100, 2),
+        "stats": {
+            "rating": _json_number(player.rating),
+            "goals": _json_number(player.goals),
+            "assists": _json_number(player.assists),
+            "shots_on_target": _json_number(player.shots_on_target),
+            "key_passes": _json_number(player.key_passes),
+            "tackles": _json_number(player.tackles),
+            "interceptions": _json_number(player.interceptions),
+            "minutes_played": _json_number(player.minutes_played),
+        },
+    }
+
+
+@app.get("/api/health")
+async def health():
+    try:
+        bundle = model_bundle()
+        return {
+            "ok": True,
+            "model_loaded": True,
+            "model_name": bundle["meta"].get("model_name"),
+        }
+    except RuntimeError as exc:
+        return {"ok": False, "model_loaded": False, "error": str(exc)}
+
+
+@app.get("/api/model-info")
+async def model_info():
+    try:
+        bundle = model_bundle()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "model_name": bundle["meta"].get("model_name", "unknown"),
+        "metrics": bundle["meta"],
+        "feature_count": len(bundle["feature_columns"]),
+    }
+
+
 @app.get("/api/teams")
 async def get_teams():
-    teams = sorted(
-        set(df["home_team"].dropna().tolist() + df["away_team"].dropna().tolist())
-    )
+    df = history_df()
+    teams = sorted(df["team"].dropna().astype(str).unique().tolist())
     return {"teams": teams}
 
 
 @app.get("/api/players/{team}")
 async def get_players(team: str):
-    rows = df[df["team"] == team][["name", "position", "position_group"]]
-    freq = rows.groupby("name").size().reset_index(name="freq")
-    rows = (
-        rows.drop_duplicates("name")
-        .merge(freq, on="name")
-        .sort_values("freq", ascending=False)
-    )
-    return {"players": rows[["name", "position", "position_group"]].to_dict("records")}
+    df = history_df()
+    rows = df[df["team"].astype(str).str.casefold() == team.casefold()]
+    if rows.empty:
+        return {"players": []}
+
+    players = []
+    for name, group in rows.groupby("name", sort=False):
+        ordered = group.sort_values(["match_date", "match_id"])
+        latest = ordered.iloc[-1]
+        position_values = ordered["position"].dropna().astype(str)
+        position = (
+            position_values[position_values != "Sub"].iloc[-1]
+            if not position_values[position_values != "Sub"].empty
+            else str(latest.get("position") or "MC")
+        )
+        players.append(
+            {
+                "name": name,
+                "position": position,
+                "position_group": _position_group(position),
+                "freq": int(len(group)),
+                "default_stats": _recent_defaults(ordered),
+            }
+        )
+
+    players.sort(key=lambda item: item["freq"], reverse=True)
+    return {"players": players}
 
 
 @app.post("/api/predict")
 async def predict_motm(match: MatchData):
-    score_margin = match.home_score - match.away_score
-    results = []
+    eligible = [p for p in match.players if p.minutes_played >= 1]
+    if not eligible:
+        raise HTTPException(status_code=400, detail="No eligible players")
 
-    for p in match.players:
-        if p.minutes_played < 20:
-            continue
-        raw = _score_player(p, score_margin)
-        results.append({
-            "name":     p.name,
-            "team":     p.team,
-            "position": p.position,
-            "score":    round(raw, 2),
-            "stats": {
-                "rating":          p.rating,
-                "goals":           p.goals,
-                "assists":         p.assists,
-                "shots_on_target": p.shots_on_target,
-                "key_passes":      p.key_passes,
-                "tackles":         p.tackles,
-                "interceptions":   p.interceptions,
-                "minutes_played":  p.minutes_played,
-            },
-        })
+    try:
+        bundle = model_bundle()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    if not results:
-        return {"error": "No eligible players (min 20 minutes required)"}
+    feature_rows = [_feature_row(match, player) for player in eligible]
+    feature_df = pd.DataFrame(feature_rows)
+    feature_df = feature_df.reindex(columns=bundle["feature_columns"])
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    transformed = bundle["preprocessor"].transform(feature_df)
+    probabilities = bundle["model"].predict_proba(transformed)[:, 1]
+
+    results = [
+        _result_payload(player, float(probability))
+        for player, probability in zip(eligible, probabilities, strict=False)
+    ]
+    results.sort(key=lambda item: item["probability"], reverse=True)
+
     return {
-        "motm":           results[0],
+        "motm": results[0],
         "top_contenders": results[1:6],
-        "all_players":    results,
+        "all_players": results,
+        "top_score": results[0]["score"],
+        "model": {
+            "name": bundle["meta"].get("model_name", "unknown"),
+            "probability_metric": "predict_proba[:, 1]",
+        },
         "match_info": {
             "home_team": match.home_team,
             "away_team": match.away_team,
-            "score":     f"{match.home_score} \u2013 {match.away_score}",
+            "score": f"{match.home_score} - {match.away_score}",
+            "season": match.season or _latest_season(),
         },
-        "top_score": results[0]["score"],
     }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

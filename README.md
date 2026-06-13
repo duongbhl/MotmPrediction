@@ -61,7 +61,7 @@ Cách nhanh nhất là clone repo trong Colab:
 !pip install -r requirements.txt
 !python src/transform_motm_data.py --input PlayerCrawl.xlsx --out-dir data/processed --artifacts-dir artifacts
 ```
-
+Trong backend cai: pip install -r requirements.txt
 Hướng dẫn đầy đủ, bao gồm cách upload zip, dùng Google Drive và clone từ
 GitHub, nằm trong `docs/colab_run_guide.md`.
 

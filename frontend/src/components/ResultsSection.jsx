@@ -15,6 +15,9 @@ const POS_STYLES = {
   FWD: 'bg-red/10 text-red',
 }
 
+const num = value => Number.isFinite(Number(value)) ? Number(value) : 0
+const fixed = (value, digits = 1) => num(value).toFixed(digits)
+
 function DonutScore({ score }) {
   const pct    = Math.min(99, Math.round(score))
   const circ   = 283
@@ -76,12 +79,12 @@ function MotmHero({ motm }) {
   const pg = posGroup(motm.position)
   const s  = motm.stats
   const STRIP = [
-    { l: 'Rating',      v: s.rating.toFixed(1), gold: true },
-    { l: 'Goals',       v: s.goals },
-    { l: 'Assists',     v: s.assists },
-    { l: 'Key Passes',  v: s.key_passes },
-    { l: 'Shots on Tgt',v: s.shots_on_target },
-    { l: 'Tackles',     v: s.tackles },
+    { l: 'Rating',      v: s.rating == null ? 'N/A' : fixed(s.rating), gold: true },
+    { l: 'Goals',       v: num(s.goals) },
+    { l: 'Assists',     v: num(s.assists) },
+    { l: 'Key Passes',  v: num(s.key_passes) },
+    { l: 'Shots on Tgt',v: num(s.shots_on_target) },
+    { l: 'Tackles',     v: num(s.tackles) },
   ]
 
   return (
@@ -100,7 +103,7 @@ function MotmHero({ motm }) {
           <div className="text-[30px] font-black leading-tight [animation:nameSlide_0.5s_ease_0.05s_forwards]">{motm.name}</div>
           <div className="flex items-center gap-2.5 mt-2">
             <span className={`text-[9px] font-extrabold px-[7px] py-[3px] rounded-[5px] tracking-[0.6px] ${POS_STYLES[pg]}`}>{pg}</span>
-            <span className="text-xs text-muted">{s.minutes_played}′ played</span>
+            <span className="text-xs text-muted">{num(s.minutes_played)}′ played</span>
           </div>
         </div>
 
@@ -125,6 +128,7 @@ function MotmHero({ motm }) {
 }
 
 function Contenders({ contenders, topScore }) {
+  const denom = Math.max(num(topScore), 0.0001)
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-[12px] mb-5">
       {contenders.slice(0, 5).map((p, i) => (
@@ -147,10 +151,10 @@ function Contenders({ contenders, topScore }) {
             <div className="h-[4px] bg-white/[0.05] rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-blue to-purple rounded-full transition-all duration-1000"
-                style={{ width: `${((p.score / topScore) * 100).toFixed(0)}%` }}
+                style={{ width: `${((num(p.score) / denom) * 100).toFixed(0)}%` }}
               />
             </div>
-            <div className="text-[11px] font-bold text-blue mt-1.5">{p.score.toFixed(1)}</div>
+            <div className="text-[11px] font-bold text-blue mt-1.5">{fixed(p.score)}</div>
           </div>
         </div>
       ))}
@@ -165,12 +169,12 @@ function PerformanceRadar({ motm }) {
     datasets: [{
       label: motm.name,
       data: [
-        (s.rating / 10) * 100,
-        (Math.min(s.goals, 4)           / 4) * 100,
-        (Math.min(s.assists, 3)         / 3) * 100,
-        (Math.min(s.key_passes, 8)      / 8) * 100,
-        (Math.min(s.shots_on_target, 6) / 6) * 100,
-        (Math.min(s.tackles, 7)         / 7) * 100,
+        (num(s.rating) / 10) * 100,
+        (Math.min(num(s.goals), 4)           / 4) * 100,
+        (Math.min(num(s.assists), 3)         / 3) * 100,
+        (Math.min(num(s.key_passes), 8)      / 8) * 100,
+        (Math.min(num(s.shots_on_target), 6) / 6) * 100,
+        (Math.min(num(s.tackles), 7)         / 7) * 100,
       ],
       backgroundColor: 'rgba(0,232,122,0.10)',
       borderColor:     'rgba(0,232,122,0.85)',
@@ -199,6 +203,7 @@ function PerformanceRadar({ motm }) {
 
 function Rankings({ allPlayers, topScore }) {
   const medals = ['🥇','🥈','🥉']
+  const denom = Math.max(num(topScore), 0.0001)
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
@@ -220,13 +225,13 @@ function Rankings({ allPlayers, topScore }) {
                 <td className="py-2.5 pr-3">
                   <span className={`text-[8px] font-extrabold px-[6px] py-[2px] rounded-[4px] tracking-[0.5px] ${POS_STYLES[pg]}`}>{pg}</span>
                 </td>
-                <td className="py-2.5 pr-3 text-gold font-bold">{p.stats.rating.toFixed(1)}</td>
-                <td className="py-2.5 pr-3 text-green font-bold">{p.score.toFixed(1)}</td>
+                <td className="py-2.5 pr-3 text-gold font-bold">{p.stats.rating == null ? 'N/A' : fixed(p.stats.rating)}</td>
+                <td className="py-2.5 pr-3 text-green font-bold">{fixed(p.score)}</td>
                 <td className="py-2.5">
                   <div className="h-[5px] bg-white/[0.05] rounded-full overflow-hidden min-w-[70px]">
                     <div
                       className="h-full bg-gradient-to-r from-green to-[#00B8FF] rounded-full"
-                      style={{ width: `${((p.score / topScore) * 100).toFixed(0)}%` }}
+                      style={{ width: `${((num(p.score) / denom) * 100).toFixed(0)}%` }}
                     />
                   </div>
                 </td>
@@ -240,6 +245,8 @@ function Rankings({ allPlayers, topScore }) {
 }
 
 export default function ResultsSection({ data }) {
+  const rankedPlayers = data.all_players || [data.motm, ...(data.top_contenders || [])]
+
   return (
     <div id="results" className="mt-6 [animation:fadeUp_0.5s_ease_forwards]">
       <div className="text-[13px] font-extrabold tracking-[2px] uppercase text-dim mb-4">🏆 Man of the Match Prediction</div>
@@ -271,12 +278,11 @@ export default function ResultsSection({ data }) {
             <span className="text-[11px] font-bold tracking-[1.8px] uppercase text-dim">Full Player Rankings</span>
           </div>
           <div className="px-[22px] pb-[22px]">
-            <Rankings allPlayers={[data.motm, ...data.top_contenders]} topScore={data.top_score} />
+            <Rankings allPlayers={rankedPlayers} topScore={data.top_score} />
           </div>
         </div>
       </div>
     </div>
   )
 }
-
 
