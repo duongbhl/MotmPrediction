@@ -25,7 +25,7 @@ export default function Header() {
             AI Powered
           </div>
           <div className="px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-xs text-dim">
-            2024 / 25
+            Pre-match
           </div>
         </div>
 

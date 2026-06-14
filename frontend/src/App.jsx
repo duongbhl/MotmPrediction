@@ -8,13 +8,18 @@ import AddPlayerModal from './components/AddPlayerModal'
 import Toast from './components/Toast'
 import './App.css'
 
+const localDateString = () => {
+  const now = new Date()
+  const offset = now.getTimezoneOffset() * 60_000
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10)
+}
+
 export default function App() {
+  const [matchDate, setMatchDate]     = useState(localDateString)
   const [homePlayers, setHomePlayers] = useState([])
   const [awayPlayers, setAwayPlayers] = useState([])
   const [homeTeam, setHomeTeam]       = useState('')
   const [awayTeam, setAwayTeam]       = useState('')
-  const [homeScore, setHomeScore]     = useState(0)
-  const [awayScore, setAwayScore]     = useState(0)
   const [results, setResults]         = useState(null)
   const [loading, setLoading]         = useState(false)
   const [modal, setModal]             = useState(null)
@@ -25,55 +30,64 @@ export default function App() {
   }, [])
 
   const buildPlayer = useCallback((player, side, team) => {
-    const stats = player.default_stats || {}
-    const passesCompleted = Number(stats.passes_completed ?? 30)
-    const passesTotal = Number(stats.passes_total ?? Math.max(passesCompleted, 40))
-
     return {
       name: player.name,
       team,
       position: player.position || 'MC',
       is_home: side === 'home' ? 1 : 0,
       is_first_eleven: 1,
-      age: stats.age ?? null,
-      minutes_played: Number(stats.minutes_played ?? 90),
-      rating: stats.rating ?? null,
-      goals: Number(stats.goals ?? 0),
-      assists: Number(stats.assists ?? 0),
-      shots_total: Number(stats.shots_total ?? 0),
-      shots_on_target: Number(stats.shots_on_target ?? 0),
-      key_passes: Number(stats.key_passes ?? 0),
-      passes_completed: passesCompleted,
-      passes_total: passesTotal,
-      pass_accuracy: stats.pass_accuracy ?? null,
-      tackles: Number(stats.tackles ?? 0),
-      interceptions: Number(stats.interceptions ?? 0),
-      clearances: Number(stats.clearances ?? 0),
-      aerial_won: Number(stats.aerial_won ?? 0),
-      dribbles_won: Number(stats.dribbles_won ?? 0),
-      fouls_committed: Number(stats.fouls_committed ?? 0),
+      age: player.age ?? null,
     }
   }, [])
+
+  const loadTeamPlayers = useCallback(async (side, team, predictionDate) => {
+    if (!team) return []
+    const params = new URLSearchParams({ prediction_date: predictionDate })
+    const res = await fetch(`/api/players/${encodeURIComponent(team)}?${params}`)
+    if (!res.ok) throw new Error(res.statusText)
+    const data = await res.json()
+    return data.players.map(p => buildPlayer(p, side, team))
+  }, [buildPlayer])
 
   const handleTeamChange = useCallback(async (side, team) => {
     if (side === 'home') { setHomeTeam(team); setHomePlayers([]) }
     else                 { setAwayTeam(team); setAwayPlayers([]) }
     if (!team) return
     try {
-      const res  = await fetch(`/api/players/${encodeURIComponent(team)}`)
-      const data = await res.json()
-      const mapped = data.players.slice(0, 18).map(p => buildPlayer(p, side, team))
+      const mapped = await loadTeamPlayers(side, team, matchDate)
       if (side === 'home') setHomePlayers(mapped)
       else                 setAwayPlayers(mapped)
     } catch {
       showToast('err', '❌ Failed to load squad')
     }
-  }, [buildPlayer, showToast])
+  }, [loadTeamPlayers, matchDate, showToast])
+
+  const handleDateChange = useCallback(async (dateValue) => {
+    setMatchDate(dateValue)
+    setResults(null)
+    try {
+      const [home, away] = await Promise.all([
+        homeTeam ? loadTeamPlayers('home', homeTeam, dateValue) : Promise.resolve([]),
+        awayTeam ? loadTeamPlayers('away', awayTeam, dateValue) : Promise.resolve([]),
+      ])
+      setHomePlayers(home)
+      setAwayPlayers(away)
+    } catch {
+      showToast('err', 'Failed to load squads for the selected date')
+    }
+  }, [awayTeam, homeTeam, loadTeamPlayers, showToast])
 
   const handlePredict = useCallback(async () => {
     if (!homeTeam || !awayTeam) { showToast('err', '⚠️ Select both teams'); return }
-    const all = [...homePlayers, ...awayPlayers]
-    if (!all.length) { showToast('err', '⚠️ Add players first'); return }
+    if (!matchDate) { showToast('err', 'Select the match date'); return }
+    const all = [...homePlayers, ...awayPlayers].map(player => ({
+      name: player.name,
+      team: player.team,
+      position: player.position,
+      is_home: player.is_home,
+      is_first_eleven: player.is_first_eleven,
+      age: player.age,
+    }))
     setLoading(true)
     try {
       const res = await fetch('/api/predict', {
@@ -81,7 +95,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           home_team: homeTeam, away_team: awayTeam,
-          home_score: homeScore, away_score: awayScore, players: all,
+          prediction_date: matchDate,
+          players: all,
         }),
       })
       if (!res.ok) throw new Error(res.statusText)
@@ -94,7 +109,7 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [homeTeam, awayTeam, homeScore, awayScore, homePlayers, awayPlayers, showToast])
+  }, [homeTeam, awayTeam, matchDate, homePlayers, awayPlayers, showToast])
 
   return (
     <div className="app-root">
@@ -103,11 +118,10 @@ export default function App() {
         <div className="max-w-[1360px] mx-auto px-7 relative z-[1]">
           <MatchSetup
             homeTeam={homeTeam} awayTeam={awayTeam}
-            homeScore={homeScore} awayScore={awayScore}
+            matchDate={matchDate}
             onHomeTeam={t => handleTeamChange('home', t)}
             onAwayTeam={t => handleTeamChange('away', t)}
-            onHomeScore={setHomeScore}
-            onAwayScore={setAwayScore}
+            onMatchDate={handleDateChange}
           />
           <div className="grid grid-cols-2 gap-[18px] mb-5 max-[700px]:grid-cols-1">
             <LineupPanel
