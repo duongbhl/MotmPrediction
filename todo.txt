@@ -1,0 +1,1 @@
+Remove score, stats_add, 'Enter player stats above, then click to reveal the Man of the Match'_text, 'add manual'_btn
