@@ -8,6 +8,7 @@ Run from backend:
 from __future__ import annotations
 
 import json
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,11 +32,19 @@ META_PATH = ARTIFACTS_DIR / "best_model_meta.json"
 
 ROLLING_SOURCE_COLUMNS = {
     "rolling_rating_5": "rating",
+    "rolling_minutes_5": "minutes_played",
+    "rolling_starts_5": "is_first_eleven",
     "rolling_goals_5": "goals",
     "rolling_assists_5": "assists",
     "rolling_shots_5": "shots_total",
+    "rolling_shots_on_target_5": "shots_on_target",
     "rolling_key_passes_5": "key_passes",
+    "rolling_pass_accuracy_5": "pass_accuracy",
     "rolling_tackles_5": "tackles",
+    "rolling_interceptions_5": "interceptions",
+    "rolling_clearances_5": "clearances",
+    "rolling_aerial_won_5": "aerial_won",
+    "rolling_dribbles_won_5": "dribbles_won",
 }
 
 POSITION_GROUP = {
@@ -65,6 +74,13 @@ POSITION_GROUP = {
     "Sub": "Sub",
 }
 
+TEAM_ALIASES = {
+    "man utd": "Manchester United",
+    "manchester united": "Manchester United",
+    "man city": "Manchester City",
+    "manchester city": "Manchester City",
+}
+
 
 app = FastAPI(title="MOTM Predictor API", version="2.0.0")
 
@@ -87,29 +103,12 @@ class PlayerStats(BaseModel):
     is_home: int = 0
     is_first_eleven: int = 1
     age: float | None = None
-    minutes_played: float = 90.0
-    rating: float | None = None
-    goals: float = 0
-    assists: float = 0
-    shots_total: float = 0
-    shots_on_target: float = 0
-    key_passes: float = 0
-    passes_completed: float = 30
-    passes_total: float = 40
-    pass_accuracy: float | None = None
-    tackles: float = 0
-    interceptions: float = 0
-    clearances: float = 0
-    aerial_won: float = 0
-    dribbles_won: float = 0
-    fouls_committed: float = 0
 
 
 class MatchData(BaseModel):
     home_team: str
     away_team: str
-    home_score: int = Field(default=0, ge=0)
-    away_score: int = Field(default=0, ge=0)
+    prediction_date: date
     season: str | None = None
     players: list[PlayerStats]
 
@@ -123,12 +122,27 @@ def _json_number(value: Any) -> float | int | None:
     return round(number, 4)
 
 
+def _normalize_match_probabilities(probabilities: np.ndarray) -> np.ndarray:
+    """Convert independent binary scores into one-winner match probabilities."""
+    clipped = np.clip(np.asarray(probabilities, dtype=float), 1e-9, 1 - 1e-9)
+    odds = clipped / (1 - clipped)
+    total = odds.sum()
+    if not np.isfinite(total) or total <= 0:
+        return np.full(len(clipped), 1 / len(clipped))
+    return odds / total
+
+
 def _clean_position(position: str | None) -> str:
     return (position or "MC").strip() or "MC"
 
 
 def _position_group(position: str | None) -> str:
     return POSITION_GROUP.get(_clean_position(position), "Other")
+
+
+def _canonical_team(team: str) -> str:
+    cleaned = team.strip()
+    return TEAM_ALIASES.get(cleaned.casefold(), cleaned)
 
 
 @lru_cache(maxsize=1)
@@ -165,9 +179,21 @@ def model_bundle() -> dict[str, Any]:
         with META_PATH.open(encoding="utf-8") as f:
             meta = json.load(f)
 
+    try:
+        model = joblib.load(MODEL_PATH)
+        preprocessor = joblib.load(PREPROCESSOR_PATH)
+    except (AttributeError, ImportError, ModuleNotFoundError, ValueError) as exc:
+        raise RuntimeError(
+            "Model artifacts are incompatible with the installed scikit-learn. "
+            "Rebuild them with the same Python environment used by the backend: "
+            "`python src/transform_motm_data.py --input PlayerCrawl.xlsx "
+            "--out-dir data/processed --artifacts-dir artifacts` then "
+            "`python src/train_models.py`."
+        ) from exc
+
     return {
-        "model": joblib.load(MODEL_PATH),
-        "preprocessor": joblib.load(PREPROCESSOR_PATH),
+        "model": model,
+        "preprocessor": preprocessor,
         "feature_columns": feature_meta["feature_columns"],
         "meta": meta,
     }
@@ -180,40 +206,45 @@ def _latest_season() -> str:
     return sorted(values.unique())[-1]
 
 
-def _player_history(player: PlayerStats) -> pd.DataFrame:
+def _history_before(prediction_date: date) -> pd.DataFrame:
+    cutoff = pd.Timestamp(prediction_date)
     df = history_df()
+    return df[df["match_date"] < cutoff]
+
+
+def _season_before(prediction_date: date) -> str:
+    rows = _history_before(prediction_date)
+    if rows.empty:
+        return _latest_season()
+    latest_date = rows["match_date"].max()
+    seasons = rows.loc[rows["match_date"] == latest_date, "season"].dropna().astype(str)
+    return seasons.iloc[-1] if not seasons.empty else _latest_season()
+
+
+def _player_history(player: PlayerStats, prediction_date: date) -> pd.DataFrame:
+    df = _history_before(prediction_date)
     name_key = player.name.lower().strip()
-    team_key = player.team.lower().strip()
-    rows = df[(df["name_key"] == name_key) & (df["team_key"] == team_key)]
+    canonical_team = _canonical_team(player.team)
+    team_matches = df["team"].astype(str).map(_canonical_team) == canonical_team
+    rows = df[(df["name_key"] == name_key) & team_matches]
     if rows.empty:
         rows = df[df["name_key"] == name_key]
     return rows
 
 
-def _recent_defaults(rows: pd.DataFrame) -> dict[str, Any]:
+def _recent_form(rows: pd.DataFrame) -> dict[str, Any]:
     if rows.empty:
         return {}
 
     recent = rows.sort_values(["match_date", "match_id"]).tail(5)
     defaults: dict[str, Any] = {}
     for col in [
-        "age",
-        "minutes_played",
         "rating",
         "goals",
         "assists",
         "shots_total",
-        "shots_on_target",
         "key_passes",
-        "passes_completed",
-        "passes_total",
-        "pass_accuracy",
         "tackles",
-        "interceptions",
-        "clearances",
-        "aerial_won",
-        "dribbles_won",
-        "fouls_committed",
     ]:
         if col in recent:
             defaults[col] = _json_number(recent[col].mean(skipna=True))
@@ -221,60 +252,22 @@ def _recent_defaults(rows: pd.DataFrame) -> dict[str, Any]:
 
 
 def _feature_row(match: MatchData, player: PlayerStats) -> dict[str, Any]:
-    rows = _player_history(player)
+    rows = _player_history(player, match.prediction_date)
     recent = rows.sort_values(["match_date", "match_id"]).tail(5)
 
-    passes_total = float(player.passes_total or 0)
-    pass_accuracy = player.pass_accuracy
-    if pass_accuracy is None:
-        pass_accuracy = (
-            (float(player.passes_completed) / passes_total) * 100
-            if passes_total > 0
-            else 0
-        )
-
     is_home = int(player.is_home)
-    score_margin = (
-        match.home_score - match.away_score
-        if is_home == 1
-        else match.away_score - match.home_score
-    )
 
     row: dict[str, Any] = {
-        "season": match.season or _latest_season(),
-        "home_team": match.home_team,
-        "away_team": match.away_team,
-        "home_score": match.home_score,
-        "away_score": match.away_score,
-        "team": player.team,
+        "season": match.season or _season_before(match.prediction_date),
+        "home_team": _canonical_team(match.home_team),
+        "away_team": _canonical_team(match.away_team),
+        "team": _canonical_team(player.team),
+        "name": player.name,
         "is_home": is_home,
         "position": _clean_position(player.position),
         "is_first_eleven": int(player.is_first_eleven),
         "age": player.age,
-        "minutes_played": player.minutes_played,
-        "goals": player.goals,
-        "assists": player.assists,
-        "shots_total": player.shots_total,
-        "shots_on_target": player.shots_on_target,
-        "key_passes": player.key_passes,
-        "passes_completed": player.passes_completed,
-        "passes_total": passes_total,
-        "pass_accuracy": pass_accuracy,
-        "tackles": player.tackles,
-        "interceptions": player.interceptions,
-        "clearances": player.clearances,
-        "aerial_won": player.aerial_won,
-        "dribbles_won": player.dribbles_won,
-        "fouls_committed": player.fouls_committed,
         "position_group": _position_group(player.position),
-        "score_margin": score_margin,
-        "goal_involvement": player.goals + player.assists,
-        "shot_accuracy": (
-            player.shots_on_target / player.shots_total
-            if player.shots_total > 0
-            else 0.0
-        ),
-        "minutes_ratio": min(max(player.minutes_played / 90.0, 0), 1.3),
     }
 
     for output_col, source_col in ROLLING_SOURCE_COLUMNS.items():
@@ -283,26 +276,48 @@ def _feature_row(match: MatchData, player: PlayerStats) -> dict[str, Any]:
             if not recent.empty and source_col in recent
             else np.nan
         )
+    row["rolling_motm_rate_10"] = (
+        float(rows.sort_values(["match_date", "match_id"]).tail(10)["is_man_of_match"].mean())
+        if not rows.empty
+        else np.nan
+    )
 
     return row
 
 
-def _result_payload(player: PlayerStats, probability: float) -> dict[str, Any]:
+def _result_payload(
+    player: PlayerStats, probability: float, feature_row: dict[str, Any]
+) -> dict[str, Any]:
     return {
         "name": player.name,
         "team": player.team,
         "position": _clean_position(player.position),
         "probability": round(probability, 6),
         "score": round(probability * 100, 2),
-        "stats": {
-            "rating": _json_number(player.rating),
-            "goals": _json_number(player.goals),
-            "assists": _json_number(player.assists),
-            "shots_on_target": _json_number(player.shots_on_target),
-            "key_passes": _json_number(player.key_passes),
-            "tackles": _json_number(player.tackles),
-            "interceptions": _json_number(player.interceptions),
-            "minutes_played": _json_number(player.minutes_played),
+        "recent_form": {
+            "rating": _json_number(feature_row.get("rolling_rating_5")),
+            "minutes": _json_number(feature_row.get("rolling_minutes_5")),
+            "start_rate": _json_number(feature_row.get("rolling_starts_5")),
+            "goals": _json_number(feature_row.get("rolling_goals_5")),
+            "assists": _json_number(feature_row.get("rolling_assists_5")),
+            "shots": _json_number(feature_row.get("rolling_shots_5")),
+            "shots_on_target": _json_number(
+                feature_row.get("rolling_shots_on_target_5")
+            ),
+            "key_passes": _json_number(feature_row.get("rolling_key_passes_5")),
+            "pass_accuracy": _json_number(
+                feature_row.get("rolling_pass_accuracy_5")
+            ),
+            "tackles": _json_number(feature_row.get("rolling_tackles_5")),
+            "interceptions": _json_number(
+                feature_row.get("rolling_interceptions_5")
+            ),
+            "clearances": _json_number(feature_row.get("rolling_clearances_5")),
+            "aerial_won": _json_number(feature_row.get("rolling_aerial_won_5")),
+            "dribbles_won": _json_number(
+                feature_row.get("rolling_dribbles_won_5")
+            ),
+            "motm_rate": _json_number(feature_row.get("rolling_motm_rate_10")),
         },
     }
 
@@ -336,14 +351,21 @@ async def model_info():
 @app.get("/api/teams")
 async def get_teams():
     df = history_df()
-    teams = sorted(df["team"].dropna().astype(str).unique().tolist())
+    teams = sorted({_canonical_team(team) for team in df["team"].dropna().astype(str)})
     return {"teams": teams}
 
 
 @app.get("/api/players/{team}")
-async def get_players(team: str):
-    df = history_df()
-    rows = df[df["team"].astype(str).str.casefold() == team.casefold()]
+async def get_players(team: str, prediction_date: date | None = None):
+    target_date = prediction_date or date.today()
+    df = _history_before(target_date)
+    canonical_team = _canonical_team(team)
+    team_mask = df["team"].astype(str).map(_canonical_team) == canonical_team
+    team_rows = df[team_mask]
+    if team_rows.empty:
+        return {"players": []}
+    latest_season = sorted(team_rows["season"].dropna().astype(str).unique())[-1]
+    rows = team_rows[team_rows["season"].astype(str) == latest_season]
     if rows.empty:
         return {"players": []}
 
@@ -363,7 +385,10 @@ async def get_players(team: str):
                 "position": position,
                 "position_group": _position_group(position),
                 "freq": int(len(group)),
-                "default_stats": _recent_defaults(ordered),
+                "age": _json_number(ordered["age"].dropna().iloc[-1])
+                if "age" in ordered and not ordered["age"].dropna().empty
+                else None,
+                "recent_form": _recent_form(ordered),
             }
         )
 
@@ -373,7 +398,7 @@ async def get_players(team: str):
 
 @app.post("/api/predict")
 async def predict_motm(match: MatchData):
-    eligible = [p for p in match.players if p.minutes_played >= 1]
+    eligible = match.players
     if not eligible:
         raise HTTPException(status_code=400, detail="No eligible players")
 
@@ -387,11 +412,14 @@ async def predict_motm(match: MatchData):
     feature_df = feature_df.reindex(columns=bundle["feature_columns"])
 
     transformed = bundle["preprocessor"].transform(feature_df)
-    probabilities = bundle["model"].predict_proba(transformed)[:, 1]
+    raw_probabilities = bundle["model"].predict_proba(transformed)[:, 1]
+    probabilities = _normalize_match_probabilities(raw_probabilities)
 
     results = [
-        _result_payload(player, float(probability))
-        for player, probability in zip(eligible, probabilities, strict=False)
+        _result_payload(player, float(probability), feature_row)
+        for player, probability, feature_row in zip(
+            eligible, probabilities, feature_rows, strict=False
+        )
     ]
     results.sort(key=lambda item: item["probability"], reverse=True)
 
@@ -402,13 +430,14 @@ async def predict_motm(match: MatchData):
         "top_score": results[0]["score"],
         "model": {
             "name": bundle["meta"].get("model_name", "unknown"),
-            "probability_metric": "predict_proba[:, 1]",
+            "probability_metric": "match-normalized odds",
         },
         "match_info": {
             "home_team": match.home_team,
             "away_team": match.away_team,
-            "score": f"{match.home_score} - {match.away_score}",
-            "season": match.season or _latest_season(),
+            "season": match.season or _season_before(match.prediction_date),
+            "prediction_date": match.prediction_date.isoformat(),
+            "prediction_type": "pre-match",
         },
     }
 

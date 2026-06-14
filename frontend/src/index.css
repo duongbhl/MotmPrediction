@@ -49,6 +49,29 @@ body::before {
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { opacity: 0.4; }
 
+/* React DayPicker dark theme */
+.match-date-popover .rdp-root {
+  --rdp-accent-color: #00E87A;
+  --rdp-accent-background-color: rgba(0, 232, 122, 0.13);
+  --rdp-day_button-border-radius: 8px;
+  --rdp-day_button-width: 36px;
+  --rdp-day_button-height: 36px;
+  --rdp-nav_button-width: 32px;
+  --rdp-nav_button-height: 32px;
+  color: #EDF2FF;
+  margin: 0;
+}
+.match-date-popover .rdp-month_caption { font-size: 14px; font-weight: 800; }
+.match-date-popover .rdp-weekday { color: #4E5E72; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.match-date-popover .rdp-day_button { color: #A8B8CC; font-size: 12px; font-weight: 650; }
+.match-date-popover .rdp-day_button:hover { background: rgba(255,255,255,0.06); color: #EDF2FF; }
+.match-date-popover .rdp-selected .rdp-day_button { background: #00E87A; color: #06110C; font-weight: 900; }
+.match-date-popover .rdp-today:not(.rdp-selected) .rdp-day_button { border: 1px solid rgba(0,232,122,0.45); color: #00E87A; }
+.match-date-popover .rdp-outside .rdp-day_button { opacity: 0.28; }
+.match-date-popover .rdp-chevron { fill: #A8B8CC; }
+.match-date-popover .rdp-button_previous:hover,
+.match-date-popover .rdp-button_next:hover { background: rgba(0,232,122,0.1); border-radius: 8px; }
+
 /* ── Keyframes ── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(28px); }

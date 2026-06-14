@@ -97,10 +97,34 @@ CURRENT_MATCH_EXCLUDE_COLUMNS = {
     "match_id",
     "match_date",
     "player_id",
-    "name",
     "is_man_of_match",
+    "home_score",
+    "away_score",
     "rating",
+    "minutes_played",
+    "goals",
+    "assists",
+    "shots_total",
+    "shots_on_target",
+    "key_passes",
+    "passes_completed",
+    "passes_total",
+    "pass_accuracy",
+    "tackles",
+    "interceptions",
+    "clearances",
+    "aerial_won",
+    "dribbles_won",
+    "fouls_committed",
+    "score_margin",
+    "goal_involvement",
+    "shot_accuracy",
+    "minutes_ratio",
     "source_sheet",
+    # `position` already captures this information. Keeping both gives
+    # goalkeepers two identical one-hot features (position=GK and group=GK),
+    # which overweights GK in regularized linear models.
+    "position_group",
 }
 
 
@@ -343,17 +367,29 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values(["player_id", "match_date", "match_id"]).reset_index(drop=True)
 
     rolling_sources = {
-        "rolling_rating_5": "rating",
-        "rolling_goals_5": "goals",
-        "rolling_assists_5": "assists",
-        "rolling_shots_5": "shots_total",
-        "rolling_key_passes_5": "key_passes",
-        "rolling_tackles_5": "tackles",
+        "rolling_rating_5": ("rating", 5),
+        "rolling_minutes_5": ("minutes_played", 5),
+        "rolling_starts_5": ("is_first_eleven", 5),
+        "rolling_goals_5": ("goals", 5),
+        "rolling_assists_5": ("assists", 5),
+        "rolling_shots_5": ("shots_total", 5),
+        "rolling_shots_on_target_5": ("shots_on_target", 5),
+        "rolling_key_passes_5": ("key_passes", 5),
+        "rolling_pass_accuracy_5": ("pass_accuracy", 5),
+        "rolling_tackles_5": ("tackles", 5),
+        "rolling_interceptions_5": ("interceptions", 5),
+        "rolling_clearances_5": ("clearances", 5),
+        "rolling_aerial_won_5": ("aerial_won", 5),
+        "rolling_dribbles_won_5": ("dribbles_won", 5),
+        "rolling_motm_rate_10": ("is_man_of_match", 10),
     }
+    for source_col, _ in rolling_sources.values():
+        if source_col not in df.columns:
+            df[source_col] = np.nan
     grouped = df.groupby("player_id", sort=False)
-    for output_col, source_col in rolling_sources.items():
+    for output_col, (source_col, window) in rolling_sources.items():
         df[output_col] = grouped[source_col].transform(
-            lambda series: series.shift(1).rolling(5, min_periods=1).mean()
+            lambda series: series.shift(1).rolling(window, min_periods=1).mean()
         )
 
     return df
@@ -460,8 +496,11 @@ def validate_outputs(
     test: pd.DataFrame,
     feature_columns: list[str],
 ) -> None:
-    if "rating" in feature_columns:
-        raise AssertionError("Primary feature set must not include current rating.")
+    leaked_columns = set(feature_columns) & CURRENT_MATCH_EXCLUDE_COLUMNS
+    if leaked_columns:
+        raise AssertionError(
+            f"Pre-match feature set contains unavailable columns: {sorted(leaked_columns)}"
+        )
 
     target_counts = df.groupby("match_id")["is_man_of_match"].sum()
     if not (target_counts == 1).all():
@@ -495,7 +534,7 @@ def write_report(
         "- Nguồn input: `PlayerCrawl.xlsx`",
         "- Không dùng làm input: `motm_clean.xlsx`, `PlayerCrawl_normalized_standard.xlsx`",
         "- Chính sách target: giữ nguyên `is_man_of_match` gốc; không gán lại nhãn theo rating cao nhất",
-        "- Chính sách feature chính: loại `rating` của trận hiện tại để giảm leakage",
+        "- Chính sách feature chính: chỉ dùng thông tin có trước trận và phong độ các trận trước",
         "",
         "## Số Lượng Dòng",
         "",
@@ -555,7 +594,9 @@ def write_feature_metadata(
         "categorical_features": categorical_features,
         "excluded_columns": sorted(CURRENT_MATCH_EXCLUDE_COLUMNS),
         "notes": [
-            "Current-match rating is excluded from the primary feature set.",
+            "All current-match scores and player statistics are excluded.",
+            "Rolling features are shifted and use previous matches only.",
+            "Position group is excluded because detailed position is already encoded.",
             "Use preprocessor.joblib fitted on train only before model training.",
         ],
     }
