@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import MatchDatePicker from './MatchDatePicker'
 
 const selectCls = [
   'w-full appearance-none bg-white/[0.035] border border-white/[0.06] rounded-[10px]',
@@ -8,15 +9,8 @@ const selectCls = [
   '[background-repeat:no-repeat] [background-position:right_14px_center]',
 ].join(' ')
 
-const scoreInputCls = [
-  'w-[54px] h-[54px] bg-white/[0.04] border border-white/[0.06] rounded-[10px]',
-  'text-text text-[22px] font-black text-center',
-  'transition-all duration-200 focus:outline-none focus:border-green focus:ring-2 focus:ring-green/10',
-].join(' ')
-
 export default function MatchSetup({
-  homeTeam, awayTeam, homeScore, awayScore,
-  onHomeTeam, onAwayTeam, onHomeScore, onAwayScore,
+  homeTeam, awayTeam, matchDate, onHomeTeam, onAwayTeam, onMatchDate,
 }) {
   const [teams, setTeams] = useState([])
 
@@ -42,7 +36,13 @@ export default function MatchSetup({
 
       {/* Body */}
       <div className="px-[22px] pb-[22px]">
-        <div className="grid grid-cols-[1fr_140px_1fr] gap-[18px] items-end max-[700px]:grid-cols-1">
+        <div className="grid grid-cols-[1fr_auto_1fr] gap-[18px] items-end max-[700px]:grid-cols-1">
+
+          <div className="col-span-3 max-[700px]:col-span-1 flex flex-col gap-2 max-w-[260px]">
+            <label className="text-[10px] font-bold tracking-[2px] uppercase text-muted">Match Date</label>
+            <MatchDatePicker value={matchDate} onChange={onMatchDate} />
+            <span className="text-[10px] text-muted">Only matches before this date are used.</span>
+          </div>
 
           {/* Home team */}
           <div className="flex flex-col gap-2">
@@ -53,16 +53,8 @@ export default function MatchSetup({
             </select>
           </div>
 
-          {/* Score */}
-          <div className="flex flex-col items-center gap-2 pb-0.5">
+          <div className="flex items-center justify-center h-[48px] px-3">
             <span className="text-[13px] font-black text-muted tracking-[3px]">VS</span>
-            <div className="flex items-center gap-2">
-              <input type="number" min={0} max={20} className={scoreInputCls}
-                value={homeScore} onChange={e => onHomeScore(Number(e.target.value))} />
-              <span className="text-lg font-bold text-muted">—</span>
-              <input type="number" min={0} max={20} className={scoreInputCls}
-                value={awayScore} onChange={e => onAwayScore(Number(e.target.value))} />
-            </div>
           </div>
 
           {/* Away team */}

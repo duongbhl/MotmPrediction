@@ -18,19 +18,7 @@ const POSITIONS = [
 const FIELDS = [
   ['Player Name',      'name',             'text',   '',    ''],
   ['Position',         'position',         'select', '',    'MC'],
-  ['Minutes Played',   'minutes_played',   'number', '1',   '90'],
-  ['⭐ Rating (0–10)', 'rating',           'number', '0.1', '7.0'],
-  ['⚽ Goals',         'goals',            'number', '1',   '0'],
-  ['🎯 Assists',       'assists',          'number', '1',   '0'],
-  ['🔫 Shots Total',   'shots_total',      'number', '1',   '0'],
-  ['🎯 Shots on Tgt',  'shots_on_target',  'number', '1',   '0'],
-  ['🔑 Key Passes',    'key_passes',       'number', '1',   '0'],
-  ['✅ Passes Compl.',  'passes_completed', 'number', '1',   '30'],
-  ['⚔️ Tackles',       'tackles',          'number', '1',   '0'],
-  ['✂️ Interceptions', 'interceptions',    'number', '1',   '0'],
-  ['🛡️ Clearances',   'clearances',       'number', '1',   '0'],
-  ['🏃 Dribbles Won',  'dribbles_won',     'number', '1',   '0'],
-  ['🟨 Fouls Committed','fouls_committed', 'number', '1',   '0'],
+  ['Age',              'age',              'number', '1',   ''],
 ]
 
 const fieldCls = 'w-full bg-white/[0.04] border border-white/[0.06] rounded-[8px] text-text text-sm px-3 py-2.5 focus:outline-none focus:border-green focus:ring-2 focus:ring-green/10 transition-all'
@@ -47,20 +35,7 @@ export default function AddPlayerModal({ side, team, onClose, onSave }) {
       team,
       is_home:         side === 'home' ? 1 : 0,
       is_first_eleven: 1,
-      minutes_played:  parseFloat(form.minutes_played) || 90,
-      rating:          parseFloat(form.rating)         || 7,
-      goals:           parseInt(form.goals)            || 0,
-      assists:         parseInt(form.assists)          || 0,
-      shots_total:     parseInt(form.shots_total)      || 0,
-      shots_on_target: parseInt(form.shots_on_target)  || 0,
-      key_passes:      parseInt(form.key_passes)       || 0,
-      passes_completed:parseInt(form.passes_completed) || 30,
-      passes_total:    40,
-      tackles:         parseInt(form.tackles)          || 0,
-      interceptions:   parseInt(form.interceptions)    || 0,
-      clearances:      parseInt(form.clearances)       || 0,
-      dribbles_won:    parseInt(form.dribbles_won)     || 0,
-      fouls_committed: parseInt(form.fouls_committed)  || 0,
+      age:              form.age ? parseFloat(form.age) : null,
     }
     onSave(p)
   }

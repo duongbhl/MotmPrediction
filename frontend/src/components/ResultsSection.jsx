@@ -4,7 +4,7 @@ import {
   LineElement, Filler, Tooltip, Legend,
 } from 'chart.js'
 import { Radar } from 'react-chartjs-2'
-import { posGroup, initials } from './LineupPanel'
+import { posGroup, initials } from '../utils/player'
 
 ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
@@ -67,24 +67,24 @@ function DonutScore({ score }) {
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-[26px] font-black text-green leading-none" ref={numRef}>0</span>
-          <span className="text-[9px] font-bold uppercase tracking-[1.4px] text-muted mt-0.5">Score</span>
+          <span className="text-[9px] font-bold uppercase tracking-[1.4px] text-muted mt-0.5">Chance</span>
         </div>
       </div>
-      <span className="text-[9px] font-bold uppercase tracking-[1.2px] text-muted">AI Confidence</span>
+      <span className="text-[9px] font-bold uppercase tracking-[1.2px] text-muted">Squad-relative chance</span>
     </div>
   )
 }
 
 function MotmHero({ motm }) {
   const pg = posGroup(motm.position)
-  const s  = motm.stats
+  const s  = motm.recent_form || {}
   const STRIP = [
-    { l: 'Rating',      v: s.rating == null ? 'N/A' : fixed(s.rating), gold: true },
-    { l: 'Goals',       v: num(s.goals) },
-    { l: 'Assists',     v: num(s.assists) },
-    { l: 'Key Passes',  v: num(s.key_passes) },
-    { l: 'Shots on Tgt',v: num(s.shots_on_target) },
-    { l: 'Tackles',     v: num(s.tackles) },
+    { l: 'Avg Rating',     v: s.rating == null ? 'N/A' : fixed(s.rating), gold: true },
+    { l: 'Avg Goals',      v: fixed(s.goals) },
+    { l: 'Avg Assists',    v: fixed(s.assists) },
+    { l: 'Avg Key Passes', v: fixed(s.key_passes) },
+    { l: 'Avg Shots',      v: fixed(s.shots) },
+    { l: 'Avg Tackles',    v: fixed(s.tackles) },
   ]
 
   return (
@@ -103,7 +103,7 @@ function MotmHero({ motm }) {
           <div className="text-[30px] font-black leading-tight [animation:nameSlide_0.5s_ease_0.05s_forwards]">{motm.name}</div>
           <div className="flex items-center gap-2.5 mt-2">
             <span className={`text-[9px] font-extrabold px-[7px] py-[3px] rounded-[5px] tracking-[0.6px] ${POS_STYLES[pg]}`}>{pg}</span>
-            <span className="text-xs text-muted">{num(s.minutes_played)}′ played</span>
+            <span className="text-xs text-muted">Form from previous 5 matches</span>
           </div>
         </div>
 
@@ -120,6 +120,39 @@ function MotmHero({ motm }) {
           >
             <div className={`text-[20px] font-extrabold leading-none ${item.gold ? 'text-gold' : 'text-text'}`}>{item.v}</div>
             <div className="text-[9px] font-bold uppercase tracking-[1px] text-muted">{item.l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FeatureDetails({ motm }) {
+  const s = motm.recent_form || {}
+  const percent = value => value == null ? 'N/A' : `${fixed(num(value) * 100)}%`
+  const accuracy = value => value == null ? 'N/A' : `${fixed(value)}%`
+  const fields = [
+    ['Avg minutes', s.minutes == null ? 'N/A' : fixed(s.minutes)],
+    ['Start rate', percent(s.start_rate)],
+    ['Shots on target', s.shots_on_target == null ? 'N/A' : fixed(s.shots_on_target)],
+    ['Pass accuracy', accuracy(s.pass_accuracy)],
+    ['Interceptions', s.interceptions == null ? 'N/A' : fixed(s.interceptions)],
+    ['Clearances', s.clearances == null ? 'N/A' : fixed(s.clearances)],
+    ['Aerial won', s.aerial_won == null ? 'N/A' : fixed(s.aerial_won)],
+    ['Dribbles won', s.dribbles_won == null ? 'N/A' : fixed(s.dribbles_won)],
+    ['MOTM rate (10)', percent(s.motm_rate)],
+  ]
+
+  return (
+    <div className="bg-card border border-white/[0.06] rounded-[14px] p-[18px] mb-5">
+      <div className="text-[11px] font-bold tracking-[1.8px] uppercase text-dim mb-3">
+        All historical model indicators
+      </div>
+      <div className="grid grid-cols-3 gap-2.5 max-[700px]:grid-cols-2">
+        {fields.map(([label, value]) => (
+          <div key={label} className="bg-white/[0.025] rounded-[8px] px-3 py-2.5">
+            <div className="text-[14px] font-bold text-text">{value}</div>
+            <div className="text-[9px] uppercase tracking-[1px] text-muted mt-1">{label}</div>
           </div>
         ))}
       </div>
@@ -163,9 +196,9 @@ function Contenders({ contenders, topScore }) {
 }
 
 function PerformanceRadar({ motm }) {
-  const s = motm.stats
+  const s = motm.recent_form || {}
   const data = {
-    labels: ['Rating','Goals','Assists','Key Passes','Shots on Tgt','Tackles'],
+    labels: ['Rating','Goals','Assists','Key Passes','Shots','Tackles'],
     datasets: [{
       label: motm.name,
       data: [
@@ -173,7 +206,7 @@ function PerformanceRadar({ motm }) {
         (Math.min(num(s.goals), 4)           / 4) * 100,
         (Math.min(num(s.assists), 3)         / 3) * 100,
         (Math.min(num(s.key_passes), 8)      / 8) * 100,
-        (Math.min(num(s.shots_on_target), 6) / 6) * 100,
+        (Math.min(num(s.shots), 6)           / 6) * 100,
         (Math.min(num(s.tackles), 7)         / 7) * 100,
       ],
       backgroundColor: 'rgba(0,232,122,0.10)',
@@ -209,7 +242,7 @@ function Rankings({ allPlayers, topScore }) {
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-white/[0.06]">
-            {['#','Player','Team','Pos','Rating','Score','Bar'].map(h => (
+            {['#','Player','Team','Pos','Recent rating','Chance','Bar'].map(h => (
               <th key={h} className="text-[9px] font-extrabold uppercase tracking-[1.6px] text-muted pb-2 text-left last:min-w-[90px]">{h}</th>
             ))}
           </tr>
@@ -225,7 +258,7 @@ function Rankings({ allPlayers, topScore }) {
                 <td className="py-2.5 pr-3">
                   <span className={`text-[8px] font-extrabold px-[6px] py-[2px] rounded-[4px] tracking-[0.5px] ${POS_STYLES[pg]}`}>{pg}</span>
                 </td>
-                <td className="py-2.5 pr-3 text-gold font-bold">{p.stats.rating == null ? 'N/A' : fixed(p.stats.rating)}</td>
+                <td className="py-2.5 pr-3 text-gold font-bold">{p.recent_form?.rating == null ? 'N/A' : fixed(p.recent_form.rating)}</td>
                 <td className="py-2.5 pr-3 text-green font-bold">{fixed(p.score)}</td>
                 <td className="py-2.5">
                   <div className="h-[5px] bg-white/[0.05] rounded-full overflow-hidden min-w-[70px]">
@@ -249,8 +282,12 @@ export default function ResultsSection({ data }) {
 
   return (
     <div id="results" className="mt-6 [animation:fadeUp_0.5s_ease_forwards]">
-      <div className="text-[13px] font-extrabold tracking-[2px] uppercase text-dim mb-4">🏆 Man of the Match Prediction</div>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="text-[13px] font-extrabold tracking-[2px] uppercase text-dim">🏆 Man of the Match Prediction</div>
+        <div className="text-[11px] text-muted">History before {data.match_info?.prediction_date}</div>
+      </div>
       <MotmHero motm={data.motm} topScore={data.top_score} />
+      <FeatureDetails motm={data.motm} />
 
       {data.top_contenders?.length > 0 && (
         <>
@@ -264,7 +301,7 @@ export default function ResultsSection({ data }) {
         <div className="bg-card border border-white/[0.06] hover:border-white/[0.12] rounded-[14px] transition-colors">
           <div className="flex items-center gap-2.5 px-[22px] pt-[18px] mb-[18px]">
             <div className="w-[30px] h-[30px] rounded-[8px] bg-gold/10 flex items-center justify-center text-[15px]">📊</div>
-            <span className="text-[11px] font-bold tracking-[1.8px] uppercase text-dim">Performance Radar — MOTM</span>
+            <span className="text-[11px] font-bold tracking-[1.8px] uppercase text-dim">Recent Form — Previous 5 Matches</span>
           </div>
           <div className="px-[22px] pb-[22px]">
             <PerformanceRadar motm={data.motm} />

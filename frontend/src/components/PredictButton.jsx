@@ -24,7 +24,7 @@ export default function PredictButton({ loading, onClick }) {
         )}
       </button>
       <p className="text-xs text-muted text-center">
-        Enter player stats above, then click to reveal the Man of the Match
+        Uses current-season squads and each player's form from previous matches
       </p>
     </div>
   )

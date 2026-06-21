@@ -10,12 +10,14 @@ Output   : artifacts/best_model.joblib  +  artifacts/model_report.md
 from __future__ import annotations
 
 import json
+import platform
 import warnings
 from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -356,6 +358,9 @@ def main() -> None:
 
     meta_out = {
         "model_name": best["name"],
+        "python_version": platform.python_version(),
+        "sklearn_version": sklearn.__version__,
+        "joblib_version": joblib.__version__,
         "val_roc_auc": best["roc_auc"], "val_pr_auc": best["pr_auc"],
         "val_f1": best["f1"], "val_threshold": best["threshold"],
         "val_top1_acc": best["top1_acc"],

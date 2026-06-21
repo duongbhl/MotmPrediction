@@ -8,8 +8,10 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.transform_motm_data import (  # noqa: E402
+    CURRENT_MATCH_EXCLUDE_COLUMNS,
     QualityReport,
     add_features,
+    build_feature_lists,
     clean_base_data,
     normalize_id,
     parse_match_date,
@@ -97,6 +99,30 @@ class TransformMotmDataTests(unittest.TestCase):
         self.assertTrue(np.isnan(featured.loc[0, "rolling_rating_5"]))
         self.assertEqual(featured.loc[1, "rolling_rating_5"], 6.0)
         self.assertEqual(featured.loc[1, "rolling_goals_5"], 1.0)
+
+    def test_pre_match_features_exclude_current_match_results_and_stats(self):
+        frame = pd.DataFrame(
+            {
+                "season": ["2025/2026"],
+                "home_team": ["Home"],
+                "away_team": ["Away"],
+                "team": ["Home"],
+                "position": ["FW"],
+                "is_home": [1],
+                "is_first_eleven": [1],
+                "age": [25],
+                "rolling_rating_5": [7.1],
+                "home_score": [2],
+                "goals": [1],
+                "rating": [8.2],
+                "is_man_of_match": [1],
+            }
+        )
+
+        feature_columns, _, _ = build_feature_lists(frame)
+
+        self.assertIn("rolling_rating_5", feature_columns)
+        self.assertFalse(set(feature_columns) & CURRENT_MATCH_EXCLUDE_COLUMNS)
 
 
 if __name__ == "__main__":
